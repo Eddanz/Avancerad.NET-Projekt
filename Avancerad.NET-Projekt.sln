@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34728.123
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Avancerad.NET-Projekt", "Avancerad.NET-Projekt\Avancerad.NET-Projekt.csproj", "{898F1D67-AA0F-43A4-8236-7D4F57B48A12}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Avancerad.NET-Projekt-ClassLibrary", "Avancerad.NET-Projekt-ClassLibrary\Avancerad.NET-Projekt-ClassLibrary.csproj", "{173780F2-4003-4664-B642-5C35328CE0AA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{898F1D67-AA0F-43A4-8236-7D4F57B48A12}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{898F1D67-AA0F-43A4-8236-7D4F57B48A12}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{898F1D67-AA0F-43A4-8236-7D4F57B48A12}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{898F1D67-AA0F-43A4-8236-7D4F57B48A12}.Release|Any CPU.Build.0 = Release|Any CPU
+		{173780F2-4003-4664-B642-5C35328CE0AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{173780F2-4003-4664-B642-5C35328CE0AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{173780F2-4003-4664-B642-5C35328CE0AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{173780F2-4003-4664-B642-5C35328CE0AA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C5C0D8CA-6652-4301-84A9-027E33CCEB67}
+	EndGlobalSection
+EndGlobal
