@@ -2,8 +2,13 @@
 using Avancerad.NET_Projekt.Methods;
 using Avancerad.NET_Projekt.Services;
 using Avancerad.NET_Projekt_ClassLibrary.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace Avancerad.NET_Projekt.Controllers
 {
@@ -11,16 +16,18 @@ namespace Avancerad.NET_Projekt.Controllers
     [ApiController]
     public class CompanyController : ControllerBase
     {
+        private readonly UserManager<IdentityUser> _userManager;
         private readonly ICompanyRepo _companyRepo;
         private readonly IMapper _mapper;
 
-        public CompanyController(ICompanyRepo companyRepo, IMapper mapper)
+        public CompanyController(ICompanyRepo companyRepo, IMapper mapper, UserManager<IdentityUser> userManager)
         {
             _companyRepo = companyRepo;
             _mapper = mapper;
+            _userManager = userManager;
         }
 
-        [HttpGet]
+        [HttpGet, Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
         public async Task<ActionResult<IEnumerable<CompanyDTO>>> GetAllCompanys()
         {
             try
@@ -37,7 +44,7 @@ namespace Avancerad.NET_Projekt.Controllers
             }
         }
 
-        [HttpGet("{id:int}")]
+        [HttpGet("{id:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
         public async Task<ActionResult<CompanyDTO>> GetCompany(int id)
         {
             try
@@ -59,35 +66,47 @@ namespace Avancerad.NET_Projekt.Controllers
             }
         }
 
-        [HttpPost]
-        public async Task<ActionResult<CompanyDTO>> CreateCompany(CompanyDTO newCompanyDTO)
+        [HttpPost, Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
+        [Route("account/create/company")]
+        public async Task<IActionResult> CreateCompany(string email, string password, string companyName)
         {
-            try
+            IdentityUser User = await _userManager.FindByEmailAsync(email);
+            if (User != null)
+                return BadRequest(false);
+
+            IdentityUser user = new()
             {
-                if (newCompanyDTO == null)
-                {
-                    return BadRequest();
-                }
+                UserName = email,
+                PasswordHash = password,
+                Email = email,
+            };
 
-                var newCompany = _mapper.Map<Company>(newCompanyDTO);
+            IdentityResult result = await _userManager.CreateAsync(user, password);
 
-                var createdCompany = await _companyRepo.CreateAsync(newCompany);
+            if (!result.Succeeded)
+                return BadRequest(false);
 
-                var createdCompanyDTO = _mapper.Map<CompanyDTO>(createdCompany);
+            Claim[] userClaims =
+                [
+                    new Claim(ClaimTypes.Email, email),
+            new Claim(ClaimTypes.Role, "company")
+                ];
+            await _userManager.AddClaimsAsync(user, userClaims);
 
-                return CreatedAtAction(nameof(GetCompany),
-                    new { id = createdCompany.CompanyID },
-                    createdCompanyDTO);
-            }
-            catch (Exception)
+            var company = new Company
             {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    "Error creating data in the database.");
-            }
+                IdentityUser = user,
+                CompanyName = companyName,
+                Email = email,
+            };
+            await _companyRepo.CreateAsync(company);
+
+            return Ok(true);
         }
 
-        [HttpDelete("{id:int}")]
-        public async Task<ActionResult<CompanyDTO>> DeleteCompany(int id)
+
+        [HttpDelete("{id:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
+        public async Task<ActionResult<CompanyDTO>> DeleteCompany(int id, [FromServices] UserManager<IdentityUser> userManager)
         {
             try
             {
@@ -98,62 +117,112 @@ namespace Avancerad.NET_Projekt.Controllers
                     return NotFound($"Company with ID {id} does not exist and therefore cannot be deleted.");
                 }
 
+                var email = User.FindFirstValue(ClaimTypes.Email);
+                var loggedInUser = await userManager.FindByEmailAsync(email);
+
+                // Check if the logged-in user exists
+                if (loggedInUser == null)
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError,
+                        "Error retrieving the logged-in user.");
+                }
+
+                // Check if the logged-in user is trying to delete their own account or if they are an admin
+                if (loggedInUser.Id != companyToDelete.IdentityUserId && !User.IsInRole("admin"))
+                {
+                    return Forbid();
+                }
+
                 var companyDTOToReturn = _mapper.Map<CompanyDTO>(companyToDelete);
 
                 await _companyRepo.DeleteAsync(id);
 
+                // Delete the associated IdentityUser
+                var identityUserToDelete = await userManager.FindByIdAsync(companyToDelete.IdentityUserId);
+                if (identityUserToDelete != null)
+                {
+                    var identityResult = await userManager.DeleteAsync(identityUserToDelete);
+                    if (!identityResult.Succeeded)
+                    {
+                        return StatusCode(StatusCodes.Status500InternalServerError,
+                            "Error deleting associated IdentityUser from the database.");
+                    }
+                }
+
                 return Ok(companyDTOToReturn);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError,
-                    "Error deleting data from the database.");
+                    $"Error deleting data from the database. {ex.Message}");
             }
         }
 
-        [HttpPut("{id:int}")]
-        public async Task<ActionResult> UpdateCompany(int id, CompanyDTO companyDTO)
+        [HttpPut("{id:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
+        public async Task<ActionResult> UpdateCompany(int id, CompanyUpdateDTO companyDTO, [FromServices] UserManager<IdentityUser> userManager)
         {
             try
             {
+                // Check if CompanyDTO is provided
                 if (companyDTO == null)
                 {
                     return BadRequest();
                 }
 
+                // Get the existing company to update
                 var existingCompany = await _companyRepo.GetByIdAsync(id);
                 if (existingCompany == null)
                 {
                     return NotFound($"Company with ID {id} does not exist.");
                 }
 
+                var email = User.FindFirstValue(ClaimTypes.Email);
+                var loggedInUser = await userManager.FindByEmailAsync(email);
+
+                // Check if the logged-in user exists
+                if (loggedInUser == null)
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError,
+                        "Error retrieving the logged-in user.");
+                }
+
+                // Check if the logged-in user is trying to update their own account or if they have the admin role
+                if (loggedInUser.Id != existingCompany.IdentityUserId && !User.IsInRole("admin"))
+                {
+                    return Forbid();
+                }
+
+                // Map the CompanyDTO to Company and set the ID
                 var updatedCompany = _mapper.Map<Company>(companyDTO);
                 updatedCompany.CompanyID = id;
 
+                // Perform the update using the service
                 await _companyRepo.UpdateAsync(updatedCompany);
-                return NoContent();
+                return NoContent(); // Return 204 No Content after successful update
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError,
-                    "Error updating data in the database.");
+                    $"Error updating data in the database. {ex.Message}");
             }
         }
 
-        [HttpGet("bookings/week/{year:int}/{weekNumber:int}")]
+        [HttpGet("bookings/week/{year:int}/{weekNumber:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
         public async Task<ActionResult<IEnumerable<AppointmentDTO>>> GetBookingsInWeek(int year, int weekNumber)
         {
             try
             {
                 // Beräkna start- och slutdatum för den angivna veckan
                 DateTime startDate = DateHelper.FirstDateOfWeek(year, weekNumber);
-                DateTime endDate = startDate.AddDays(6); // Anta 7-dagars vecka (måndag till söndag)
+                DateTime endDate = startDate.AddDays(6).AddHours(23).AddMinutes(59).AddSeconds(59); // Anta 7-dagars vecka (måndag till söndag)
 
-                // Hämta alla bokningar för den angivna veckan som inte är flaggade som raderade
+                
                 var bookings = await _companyRepo.GetBookingsInDateRange(startDate, endDate);
-                var nonDeletedBookings = bookings.Where(b => !b.IsDeleted);
 
-                return Ok(nonDeletedBookings);
+                //var nonDeletedBookings = bookings.Where(b => !b.IsDeleted);
+                var bookingsDTO = _mapper.Map<IEnumerable<AppointmentDTO>>(bookings);
+
+                return Ok(bookingsDTO);
             }
             catch (Exception)
             {
@@ -161,7 +230,7 @@ namespace Avancerad.NET_Projekt.Controllers
             }
         }
 
-        [HttpGet("bookings/month/{year:int}/{month:int}")]
+        [HttpGet("bookings/month/{year:int}/{month:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
         public async Task<ActionResult<IEnumerable<AppointmentDTO>>> GetBookingsInMonth(int year, int month)
         {
             try
@@ -170,11 +239,13 @@ namespace Avancerad.NET_Projekt.Controllers
                 DateTime startDate = new DateTime(year, month, 1);
                 DateTime endDate = startDate.AddMonths(1).AddDays(-1); // Sista dagen i månaden
 
-                // Hämta alla bokningar för den angivna månaden som inte är flaggade som raderade
+                
                 var bookings = await _companyRepo.GetBookingsInDateRange(startDate, endDate);
-                var nonDeletedBookings = bookings.Where(b => !b.IsDeleted);
+                
+                //var nonDeletedBookings = bookings.Where(b => !b.IsDeleted);
+                var bookingsDTO = _mapper.Map<IEnumerable<AppointmentDTO>>(bookings);
 
-                return Ok(nonDeletedBookings);
+                return Ok(bookingsDTO);
             }
             catch (Exception)
             {

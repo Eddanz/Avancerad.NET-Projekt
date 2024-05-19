@@ -58,7 +58,6 @@ namespace Avancerad.NET_Projekt.Services
             {
                 result.FirstName = entity.FirstName;
                 result.LastName = entity.LastName;
-                result.Email = entity.Email;
                 result.Phone = entity.Phone;
 
                 await _context.SaveChangesAsync();
@@ -71,15 +70,14 @@ namespace Avancerad.NET_Projekt.Services
         {
             // Calculate start and end dates for the specified week
             DateTime startOfWeek = DateHelper.FirstDateOfWeek(year, weekNumber);
-            DateTime endOfWeek = startOfWeek.AddDays(6);
+            DateTime endOfWeek = startOfWeek.AddDays(6).AddHours(23).AddMinutes(59).AddSeconds(59);
 
             // Retrieve appointments for the specified customer within the specified week,
             // excluding appointments that are flagged as deleted
             int appointmentsCount = await _context.Appointments
                 .Where(a => a.CustomerID == customerId &&
                             a.AttendDate >= startOfWeek &&
-                            a.AttendDate <= endOfWeek &&
-                            !a.IsDeleted)  // Exclude appointments that are flagged as deleted
+                            a.AttendDate <= endOfWeek)
                 .CountAsync();
 
             return appointmentsCount;

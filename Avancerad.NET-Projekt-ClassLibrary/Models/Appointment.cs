@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Identity;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -13,13 +14,13 @@ namespace Avancerad.NET_Projekt_ClassLibrary.Models
         public int AppointmentID { get; set; }
 
         [DataType(DataType.DateTime)]
-        public DateTime BookingDate { get; set; } = DateTime.Now;
+        public DateTime BookingDate { get; set; } = DateTime.UtcNow.ToLocalTime();
 
         [Required(ErrorMessage = "You must choose a date for your appointment")]
         [DataType(DataType.DateTime)]
         public DateTime AttendDate { get; set; }
 
-        public bool IsDeleted { get; set; } = false;
+        //public bool IsDeleted { get; set; } = false;
 
         public Customer Customer { get; set; }
 

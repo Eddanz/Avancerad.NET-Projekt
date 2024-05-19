@@ -7,13 +7,10 @@ using System.Threading.Tasks;
 
 namespace Avancerad.NET_Projekt_ClassLibrary.Models
 {
-    public class CompanyDTO
+    public class CompanyUpdateDTO
     {
         [Required(ErrorMessage = "A company name is required")]
         [StringLength(50, ErrorMessage = "Company name can't be longer than 50 characters")]
         public string CompanyName { get; set; }
-
-        [DataType(DataType.EmailAddress)]
-        public string Email { get; set; }
     }
 }

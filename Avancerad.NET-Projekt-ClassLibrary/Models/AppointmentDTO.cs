@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Identity;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -10,7 +11,7 @@ namespace Avancerad.NET_Projekt_ClassLibrary.Models
     public class AppointmentDTO
     {
         [DataType(DataType.DateTime)]
-        public DateTime BookingDate { get; set; } = DateTime.Now;
+        public DateTime BookingDate { get; set; } = DateTime.UtcNow.ToLocalTime();
 
         [Required(ErrorMessage = "You must choose a date for your appointment")]
         [DataType(DataType.DateTime)]
