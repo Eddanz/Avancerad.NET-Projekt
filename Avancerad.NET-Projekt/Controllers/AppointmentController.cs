@@ -1,8 +1,12 @@
 ﻿using AutoMapper;
 using Avancerad.NET_Projekt.Services;
 using Avancerad.NET_Projekt_ClassLibrary.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Avancerad.NET_Projekt.Controllers
 {
@@ -11,25 +15,22 @@ namespace Avancerad.NET_Projekt.Controllers
     public class AppointmentController : ControllerBase
     {
         private readonly IAppointmentRepo _appointmentRepo;
-        private readonly IHistoryRepo _historyRepo;
+        private readonly ICustomerRepo _customerRepo;
         private readonly IMapper _mapper;
 
-        public AppointmentController(IAppointmentRepo appointmentRepo, IHistoryRepo historyRepo ,IMapper mapper)
+        public AppointmentController(IAppointmentRepo appointmentRepo, ICustomerRepo customerRepo ,IMapper mapper)
         {
             _appointmentRepo = appointmentRepo;
-            _historyRepo = historyRepo;
+            _customerRepo = customerRepo;
             _mapper = mapper;
         }
 
-        [HttpGet]
+        [HttpGet, Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
         public async Task<ActionResult<IEnumerable<AppointmentDTO>>> GetAllAppointments()
         {
             try
             {
                 var appointment = await _appointmentRepo.GetAllAsync();
-
-                // Filter out appointments where IsDeleted is false
-                appointment = appointment.Where(a => !a.IsDeleted);
 
                 var appointmentDTO = _mapper.Map<IEnumerable<AppointmentDTO>>(appointment);
 
@@ -42,16 +43,16 @@ namespace Avancerad.NET_Projekt.Controllers
             }
         }
 
-        [HttpGet("{id:int}")]
+        [HttpGet("{id:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
         public async Task<ActionResult<AppointmentDTO>> GetAppointment(int id)
         {
             try
             {
                 var appointment = await _appointmentRepo.GetByIdAsync(id);
 
-                if (appointment == null || appointment.IsDeleted)
+                if (appointment == null)
                 {
-                    return NotFound($"Appointment with ID {id} does not exist or is flagged as deleted.");
+                    return NotFound($"Appointment with ID {id} does not exist");
                 }
 
                 var appointmentDTO = _mapper.Map<AppointmentDTO>(appointment);
@@ -64,15 +65,12 @@ namespace Avancerad.NET_Projekt.Controllers
             }
         }
 
-        [HttpGet("customers-with-appointments-in-current-week")]
+        [HttpGet("customers-with-appointments-in-current-week"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
         public async Task<ActionResult<IEnumerable<CustomerDTO>>> GetCustomersWithAppointmentsInCurrentWeek()
         {
             try
             {
                 var customers = await _appointmentRepo.GetCustomersWithAppointmentsInCurrentWeek();
-
-                // Filter out appointments where IsDeleted is false
-                customers = customers.Where(c => c.Appointments.Any(a => !a.IsDeleted));
 
                 // Map customers to CustomerDTOs
                 var customerDTOs = _mapper.Map<IEnumerable<CustomerDTO>>(customers);
@@ -86,7 +84,7 @@ namespace Avancerad.NET_Projekt.Controllers
             }
         }
 
-        [HttpPost]
+        [HttpPost, Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyCustomerPolicy")]
         public async Task<ActionResult<AppointmentDTO>> CreateAppointment(AppointmentDTO newAppointmentDTO)
         {
             try
@@ -102,16 +100,6 @@ namespace Avancerad.NET_Projekt.Controllers
 
                 var createdAppointmentDTO = _mapper.Map<AppointmentDTO>(createdAppointment);
 
-                // Add a change to the appointment history
-                var historyEntry = new History
-                {
-                    AppointmentID = createdAppointment.AppointmentID,
-                    ChangeDate = DateTime.UtcNow,
-                    ChangeType = "Added",
-                    ChangeDescription = $"Appointment created at {DateTime.Now}"
-                };
-                await _historyRepo.CreateAsync(historyEntry);
-
                 return CreatedAtAction(nameof(GetAppointment),
                     new { id = createdAppointment.AppointmentID },
                     createdAppointmentDTO);
@@ -123,8 +111,8 @@ namespace Avancerad.NET_Projekt.Controllers
             }
         }
 
-        [HttpDelete("{id:int}")]
-        public async Task<ActionResult<AppointmentDTO>> DeleteAppointment(int id)
+        [HttpDelete("{id:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyCustomerPolicy")]
+        public async Task<ActionResult<AppointmentDTO>> DeleteAppointment(int id, [FromServices] UserManager<IdentityUser> userManager)
         {
             try
             {
@@ -135,25 +123,29 @@ namespace Avancerad.NET_Projekt.Controllers
                     return NotFound($"Appointment with ID {id} does not exist and therefore cannot be deleted.");
                 }
 
-                // Mark the appointment as deleted
-                appointmentToDelete.IsDeleted = true;
+                var email = User.FindFirstValue(ClaimTypes.Email);
+                var loggedInUser = await userManager.FindByEmailAsync(email);
 
-                // Update the appointment in the database
-                await _appointmentRepo.UpdateAsync(appointmentToDelete);
-
-                var appointmentDTOToReturn = _mapper.Map<AppointmentDTO>(appointmentToDelete);
-
-                // Add a change to the appointment history indicating that the appointment has been deleted
-                var historyEntry = new History
+                // Check if the logged-in user exists
+                if (loggedInUser == null)
                 {
-                    AppointmentID = id, // Assuming AppointmentID is string in History
-                    ChangeDate = DateTime.UtcNow,
-                    ChangeType = "Deleted",
-                    ChangeDescription = $"Appointment deleted at {DateTime.Now}"
-                };
-                await _historyRepo.CreateAsync(historyEntry);
+                    return StatusCode(StatusCodes.Status500InternalServerError,
+                        "Error retrieving the logged-in user.");
+                }
 
-                return Ok(appointmentDTOToReturn);
+                // Get the customer associated with the appointment
+                var customer = await _customerRepo.GetByIdAsync(appointmentToDelete.CustomerID);
+
+                // Check if the logged-in user is trying to delete their own appointment or if they have the admin or company role
+                if (loggedInUser.Id != customer.IdentityUserId && !User.IsInRole("admin") && !User.IsInRole("company"))
+                {
+                    return Forbid();
+                }
+
+                // Delete the appointment
+                await _appointmentRepo.DeleteAsync(id);
+
+                return Ok();
             }
             catch (Exception)
             {
@@ -162,8 +154,8 @@ namespace Avancerad.NET_Projekt.Controllers
             }
         }
 
-        [HttpPut("{id:int}")]
-        public async Task<ActionResult> UpdateAppointment(int id, AppointmentDTO appointmentDTO)
+        [HttpPut("{id:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyCustomerPolicy")]
+        public async Task<ActionResult> UpdateAppointment(int id, AppointmentDTO appointmentDTO, [FromServices] UserManager<IdentityUser> userManager)
         {
             try
             {
@@ -180,6 +172,25 @@ namespace Avancerad.NET_Projekt.Controllers
                     return NotFound($"Appointment with ID {id} does not exist.");
                 }
 
+                var email = User.FindFirstValue(ClaimTypes.Email);
+                var loggedInUser = await userManager.FindByEmailAsync(email);
+
+                // Check if the logged-in user exists
+                if (loggedInUser == null)
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError,
+                        "Error retrieving the logged-in user.");
+                }
+
+                // Get the customer associated with the appointment
+                var customer = await _customerRepo.GetByIdAsync(existingAppointment.CustomerID);
+
+                // Check if the logged-in user is trying to update their own account or if they have the admin or company role
+                if (loggedInUser.Id != customer.IdentityUserId && User != null && (!User.IsInRole("admin") && !User.IsInRole("company")))
+                {
+                    return Forbid();
+                }
+
                 var originalAttendDate = existingAppointment.AttendDate;
 
                 // Map the CustomerDTO to Customer and set the ID
@@ -188,16 +199,6 @@ namespace Avancerad.NET_Projekt.Controllers
 
                 // Perform the update using the service
                 await _appointmentRepo.UpdateAsync(updatedAppointment);
-
-                // Spara ändringshistoriken
-                var history = new History
-                {
-                    AppointmentID = id,
-                    ChangeDate = DateTime.UtcNow,
-                    ChangeType = "Changed",
-                    ChangeDescription = $"Appointment changed from {originalAttendDate} to {updatedAppointment.AttendDate} at {DateTime.Now}"
-                };
-                await _historyRepo.CreateAsync(history);
 
                 return NoContent(); // Return 204 No Content after successful update
             }

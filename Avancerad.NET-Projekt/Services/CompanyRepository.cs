@@ -46,7 +46,7 @@ namespace Avancerad.NET_Projekt.Services
             var result = await _context.Companys.SingleOrDefaultAsync(c => c.CompanyID == entity.CompanyID);
             if (result != null)
             {
-                entity.CompanyName = result.CompanyName;
+                result.CompanyName = entity.CompanyName;
 
                 await _context.SaveChangesAsync();
                 return result;

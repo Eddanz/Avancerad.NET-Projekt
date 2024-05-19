@@ -8,9 +8,10 @@ namespace Avancerad.NET_Projekt.Data
         public AutoMapperProfile()
         {
             CreateMap<Customer, CustomerDTO>().ReverseMap();
+            CreateMap<Customer, CustomerUpdateDTO>().ReverseMap();
             CreateMap<Appointment, AppointmentDTO>().ReverseMap();
             CreateMap<Company, CompanyDTO>().ReverseMap();
-            CreateMap<History, HistoryDTO>().ReverseMap();
+            CreateMap<Company, CompanyUpdateDTO>().ReverseMap();
         }    
     }
 }
