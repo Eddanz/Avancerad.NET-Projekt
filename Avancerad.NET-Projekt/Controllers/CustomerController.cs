@@ -36,8 +36,9 @@ namespace Avancerad.NET_Projekt.Controllers
         {
             try
             {
-                var customer = await _customerRepo.GetAllAsync();
-                var customerDTO = _mapper.Map<IEnumerable<CustomerDTO>>(customer);
+                var customers = await _customerRepo.GetAllAsync();
+
+                var customerDTO = _mapper.Map<IEnumerable<CustomerDTO>>(customers);
 
                 return Ok(customerDTO);
             }
@@ -47,6 +48,49 @@ namespace Avancerad.NET_Projekt.Controllers
                     "Error to retrive data from database..");
             }
         }
+
+        [HttpGet("sort-or-filter"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
+        public async Task<ActionResult<IEnumerable<CustomerDTO>>> GetAllCustomersQuery(string sortBy = null, string filterBy = null)
+        {
+            try
+            {
+                var customers = await _customerRepo.GetAllAsync();
+
+                // Filtrera kunder baserat på filterBy
+                if (!string.IsNullOrEmpty(filterBy))
+                {
+                    customers = customers.Where(c => c.FirstName.ToLower().Contains(filterBy.ToLower()));
+                }
+
+                // Sortera kunder baserat på sortBy
+                if (!string.IsNullOrEmpty(sortBy))
+                {
+                    switch (sortBy.ToLower())
+                    {
+                        case "firstname":
+                            customers = customers.OrderBy(c => c.FirstName);
+                            break;
+                        case "lastname":
+                            customers = customers.OrderBy(c => c.LastName);
+                            break;
+                        // Lägg till fler sorteringsalternativ här
+                        default:
+                            break;
+                    }
+                }
+
+                var customerDTOs = _mapper.Map<IEnumerable<CustomerDTO>>(customers);
+
+                return Ok(customerDTOs);
+            }
+            catch (Exception)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "Fel vid hämtning av data från databasen..");
+            }
+        }
+
+
 
         [HttpGet("appointments/{id:int}"), Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "AdminCompanyPolicy")]
         public async Task<ActionResult<object>> GetCustomerAppointments(int id)

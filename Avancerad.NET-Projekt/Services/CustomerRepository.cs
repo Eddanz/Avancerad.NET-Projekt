@@ -37,6 +37,11 @@ namespace Avancerad.NET_Projekt.Services
             return await _context.Customers.ToListAsync();
         }
 
+        public IQueryable<Customer> GetAllAsyncQuery()
+        {
+            return _context.Customers.AsQueryable();
+        }
+
         public async Task<Customer> GetCustomerWithAppointments(int id)
         {
             var customer = await _context.Customers
